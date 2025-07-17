@@ -50,7 +50,35 @@
         .game-controls {
             display: flex;
             gap: 15px;
+            margin-bottom: 15px; /* Added margin for spacing */
         }
+        .mobile-controls {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 600px;
+            margin-top: 15px;
+            visibility: hidden; /* Hidden by default */
+        }
+        .mobile-controls.active {
+            visibility: visible;
+        }
+        .mobile-controls button {
+            flex: 1; /* Distribute space evenly */
+            margin: 0 5px; /* Small gap between buttons */
+            padding: 15px 0; /* Larger touch targets */
+            font-size: 1.5rem;
+            background-color: #008CBA; /* Blue for controls */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        .mobile-controls button:hover {
+            background-color: #007B9E;
+        }
+        .mobile-controls button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
         button {
             background-color: #4CAF50; /* Green */
             color: white;
@@ -76,6 +104,12 @@
         }
         button.reset:hover {
             background-color: #da190b;
+        }
+        button.toggle-controls {
+            background-color: #555; /* Darker grey for toggle button */
+        }
+        button.toggle-controls:hover {
+            background-color: #333;
         }
         .message-box {
             position: absolute;
@@ -116,6 +150,10 @@
                 padding: 10px 20px;
                 font-size: 0.9rem;
             }
+            .mobile-controls button {
+                padding: 10px 0;
+                font-size: 1.2rem;
+            }
             .message-box {
                 font-size: 1.5rem;
                 padding: 20px;
@@ -134,6 +172,11 @@
         <div class="game-controls">
             <button id="startButton">Start Game</button>
             <button id="resetButton" class="reset">Reset Game</button>
+            <button id="toggleMobileControlsButton" class="toggle-controls">Toggle Mobile Controls</button>
+        </div>
+        <div id="mobileControls" class="mobile-controls">
+            <button id="leftButton">&lt;</button>
+            <button id="rightButton">&gt;</button>
         </div>
     </div>
 
@@ -155,6 +198,12 @@
         // Get control buttons
         const startButton = document.getElementById('startButton');
         const resetButton = document.getElementById('resetButton');
+        const toggleMobileControlsButton = document.getElementById('toggleMobileControlsButton'); // New toggle button
+
+        // Get mobile control buttons
+        const mobileControlsDiv = document.getElementById('mobileControls');
+        const leftButton = document.getElementById('leftButton');
+        const rightButton = document.getElementById('rightButton');
 
         // Get message box elements
         const messageBox = document.getElementById('messageBox');
@@ -211,11 +260,11 @@
         beerImage.onerror = () => console.error("Failed to load Beer image. Using fallback.");
 
         // Game settings
-        const obstacleSpawnInterval = 800; // Even faster spawn
-        const initialObstacleSpeed = 5; // Much higher initial speed
+        const obstacleSpawnInterval = 800;
+        const initialObstacleSpeed = 5;
         let currentObstacleSpeed = initialObstacleSpeed;
-        const speedIncreaseFactor = 0.002; // Much faster speed increase
-        const maxObstacleSpeed = 25; // Significantly increased max speed
+        const speedIncreaseFactor = 0.002;
+        const maxObstacleSpeed = 25;
         const passiveScoreIncreaseInterval = 500;
         let lastPassiveScoreTime = 0;
         let lastObstacleSpawnTime = 0;
@@ -532,42 +581,88 @@
             }
         });
 
-        // --- Mobile Touch Controls ---
+        // --- Mobile Touch Controls on Canvas ---
         let touchStartX = 0;
-        const touchThreshold = 20; // Minimum horizontal swipe distance to trigger movement
+        const touchThreshold = 20;
 
         canvas.addEventListener('touchstart', (e) => {
             if (!gameRunning) return;
-            e.preventDefault(); // Prevent scrolling/zooming
+            e.preventDefault();
             touchStartX = e.touches[0].clientX;
         });
 
         canvas.addEventListener('touchmove', (e) => {
             if (!gameRunning) return;
-            e.preventDefault(); // Prevent scrolling/zooming
+            e.preventDefault();
             const touchCurrentX = e.touches[0].clientX;
             const deltaX = touchCurrentX - touchStartX;
 
             if (Math.abs(deltaX) > touchThreshold) {
-                if (deltaX < 0) { // Swiping left
+                if (deltaX < 0) {
                     player.dx = -player.speed;
-                } else { // Swiping right
+                } else {
                     player.dx = player.speed;
                 }
             } else {
-                player.dx = 0; // No significant swipe, stop movement
+                player.dx = 0;
             }
         });
 
         canvas.addEventListener('touchend', (e) => {
             if (!gameRunning) return;
-            e.preventDefault(); // Prevent default touch behavior
-            player.dx = 0; // Stop movement when touch ends
+            e.preventDefault();
+            player.dx = 0;
         });
-        // --- End Mobile Touch Controls ---
+        // --- End Mobile Touch Controls on Canvas ---
+
+        // --- On-screen Mobile Controls (for PC visibility) ---
+        let mobileControlsVisible = false;
+
+        toggleMobileControlsButton.addEventListener('click', () => {
+            mobileControlsVisible = !mobileControlsVisible;
+            if (mobileControlsVisible) {
+                mobileControlsDiv.classList.add('active');
+            } else {
+                mobileControlsDiv.classList.remove('active');
+                player.dx = 0; // Stop movement if controls are hidden while moving
+            }
+        });
+
+        // Event listeners for Left/Right buttons (both mouse and touch)
+        const setupButtonListeners = (button, direction) => {
+            button.addEventListener('mousedown', (e) => {
+                if (!gameRunning) return;
+                e.preventDefault();
+                player.dx = direction * player.speed;
+            });
+            button.addEventListener('mouseup', (e) => {
+                if (!gameRunning) return;
+                e.preventDefault();
+                player.dx = 0;
+            });
+            button.addEventListener('mouseleave', (e) => { // Stop if mouse leaves button while pressed
+                if (!gameRunning) return;
+                player.dx = 0;
+            });
+
+            button.addEventListener('touchstart', (e) => {
+                if (!gameRunning) return;
+                e.preventDefault();
+                player.dx = direction * player.speed;
+            });
+            button.addEventListener('touchend', (e) => {
+                if (!gameRunning) return;
+                e.preventDefault();
+                player.dx = 0;
+            });
+        };
+
+        setupButtonListeners(leftButton, -1); // -1 for left
+        setupButtonListeners(rightButton, 1); // 1 for right
+        // --- End On-screen Mobile Controls ---
 
 
-        // Event listeners for buttons
+        // Event listeners for main buttons
         startButton.addEventListener('click', () => {
             if (!gameRunning) {
                 resetGame();
