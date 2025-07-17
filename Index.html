@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: "Inter", sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f0f0f0;
+            margin: 0;
+            overflow: hidden; /* Prevent scrollbars */
+        }
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #ffffff;
+            border-radius: 15px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            max-width: 90vw; /* Responsive width */
+        }
+        canvas {
+            background-color: #87CEEB; /* Sky blue */
+            border: 2px solid #333;
+            border-radius: 8px;
+            display: block;
+            margin-bottom: 20px;
+            width: 100%; /* Make canvas responsive */
+            max-width: 600px; /* Max width for desktop */
+            height: 400px; /* Fixed height for simplicity */
+            touch-action: none; /* Prevent browser default touch actions like scrolling/zooming */
+        }
+        .game-info {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 600px;
+            margin-bottom: 15px;
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: #333;
+        }
+        .game-controls {
+            display: flex;
+            gap: 15px;
+        }
+        button {
+            background-color: #4CAF50; /* Green */
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        button:hover {
+            background-color: #45a049;
+            transform: translateY(-2px);
+        }
+        button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        button.reset {
+            background-color: #f44336; /* Red */
+        }
+        button.reset:hover {
+            background-color: #da190b;
+        }
+        .message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            font-size: 2rem;
+            font-weight: bold;
+            z-index: 1000;
+            display: none; /* Hidden by default */
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+        .message-box button {
+            margin-top: 20px;
+            background-color: #008CBA; /* Blue */
+        }
+        .message-box button:hover {
+            background-color: #007B9E;
+        }
+
+        /* Responsive adjustments for smaller screens */
+        @media (max-width: 640px) {
+            .game-container {
+                padding: 15px;
+            }
+            canvas {
+                height: 300px; /* Adjust height for smaller screens */
+            }
+            .game-info {
+                font-size: 1rem;
+            }
+            button {
+                padding: 10px 20px;
+                font-size: 0.9rem;
+            }
+            .message-box {
+                font-size: 1.5rem;
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="game-info">
+            <div>Score: <span id="score">0</span></div>
+            <div>Health: <span id="health">3</span></div>
+            <div>High Score: <span id="highScore">0</span></div>
+        </div>
+        <canvas id="gameCanvas" width="600" height="400"></canvas>
+        <div class="game-controls">
+            <button id="startButton">Start Game</button>
+            <button id="resetButton" class="reset">Reset Game</button>
+        </div>
+    </div>
+
+    <div id="messageBox" class="message-box">
+        <p id="messageText"></p>
+        <button id="messageBoxButton">Play Again</button>
+    </div>
+
+    <script>
+        // Get canvas and its context
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Get score, health, and high score elements
+        const scoreDisplay = document.getElementById('score');
+        const healthDisplay = document.getElementById('health');
+        const highScoreDisplay = document.getElementById('highScore');
+
+        // Get control buttons
+        const startButton = document.getElementById('startButton');
+        const resetButton = document.getElementById('resetButton');
+
+        // Get message box elements
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+        const messageBoxButton = document.getElementById('messageBoxButton');
+
+        // Game state variables
+        let gameRunning = false;
+        let score = 0;
+        let highScore = localStorage.getItem('asgoreDessHighScore') || 0;
+        let animationFrameId;
+
+        // Player (Asgore)
+        const player = {
+            x: canvas.width / 2 - 50,
+            y: canvas.height - 100,
+            width: 100,
+            height: 80,
+            originalSpeed: 7,
+            speed: 7,
+            dx: 0,
+            speedBoostActive: false,
+            speedBoostTimeout: null,
+            health: 3,
+            maxHealth: 3
+        };
+
+        // Load Asgore Image (Truck)
+        const asgoreImage = new Image();
+        asgoreImage.src = 'https://na.cdn.beatsaver.com/8402d6f0fec5d5fcce6ab0ab4e81ce937ab3f4d4.jpg';
+        asgoreImage.onerror = () => console.error("Failed to load Asgore truck image. Using fallback.");
+
+        // Obstacle Types
+        let obstacles = [];
+        const obstacleTypes = {
+            DESS: 'dess',
+            CONE: 'cone',
+            BEER: 'beer'
+        };
+
+        // Load Dess Image
+        const dessImage = new Image();
+        dessImage.src = 'https://static.wikia.nocookie.net/deltatraveler/images/f/f7/Dess.png/revision/latest/scale-to-width/360?cb=20230327191447';
+        dessImage.onerror = () => console.error("Failed to load Dess image. Using fallback.");
+
+        // Load Cone Image
+        const coneImage = new Image();
+        coneImage.src = 'https://moxievinyls.com/cdn/shop/products/ScreenShot2021-06-06at12.39.12PM.png?v=1623008762';
+        coneImage.onerror = () => console.error("Failed to load Cone image. Using fallback.");
+
+        // Load Beer Image
+        const beerImage = new Image();
+        beerImage.src = 'https://www.bestwaywholesale.co.uk/img/products/1000/2/8712000022662.jpg';
+        beerImage.onerror = () => console.error("Failed to load Beer image. Using fallback.");
+
+        // Game settings
+        const obstacleSpawnInterval = 800; // Even faster spawn
+        const initialObstacleSpeed = 5; // Much higher initial speed
+        let currentObstacleSpeed = initialObstacleSpeed;
+        const speedIncreaseFactor = 0.002; // Much faster speed increase
+        const maxObstacleSpeed = 25; // Significantly increased max speed
+        const passiveScoreIncreaseInterval = 500;
+        let lastPassiveScoreTime = 0;
+        let lastObstacleSpawnTime = 0;
+
+        // Speed boost settings
+        const speedBoostMultiplier = 1.5;
+        const speedBoostDuration = 3000;
+
+        // Sound variables (using AudioContext for simple beeps)
+        let audioContext;
+        function initAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        // Function to play a simple beep sound
+        function playBeep(frequency, duration, type = 'sine') {
+            initAudioContext();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.frequency.value = frequency;
+            oscillator.type = type;
+            gainNode.gain.value = 0.5;
+
+            oscillator.start();
+            gainNode.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + duration);
+            oscillator.stop(audioContext.currentTime + duration);
+        }
+
+        // Update score, health, and high score display
+        function updateGameInfoDisplay() {
+            scoreDisplay.textContent = score;
+            healthDisplay.textContent = player.health;
+            highScoreDisplay.textContent = highScore;
+        }
+
+        // Draw player (Asgore)
+        function drawPlayer() {
+            if (asgoreImage.complete && asgoreImage.naturalWidth !== 0) {
+                ctx.drawImage(asgoreImage, player.x, player.y, player.width, player.height);
+            } else {
+                ctx.fillStyle = '#FFD700';
+                ctx.fillRect(player.x, player.y, player.width, player.height);
+                ctx.fillStyle = 'white';
+                ctx.font = '24px "Inter", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('A', player.x + player.width / 2, player.y + player.height / 2 + 8);
+            }
+        }
+
+        // Draw obstacles
+        function drawObstacles() {
+            obstacles.forEach(obstacle => {
+                if (obstacle.type === obstacleTypes.DESS) {
+                    if (dessImage.complete && dessImage.naturalWidth !== 0) {
+                        ctx.drawImage(dessImage, obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+                    } else {
+                        ctx.fillStyle = 'purple';
+                        ctx.beginPath();
+                        ctx.arc(obstacle.x + obstacle.width / 2, obstacle.y + obstacle.height / 2, obstacle.width / 2, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.closePath();
+                        ctx.fillStyle = 'white';
+                        ctx.font = '14px "Inter", sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('Dess', obstacle.x + obstacle.width / 2, obstacle.y + obstacle.height / 2 + 5);
+                    }
+                } else if (obstacle.type === obstacleTypes.CONE) {
+                    if (coneImage.complete && coneImage.naturalWidth !== 0) {
+                        ctx.drawImage(coneImage, obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+                    } else {
+                        ctx.fillStyle = 'orange';
+                        ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+                        ctx.fillStyle = 'white';
+                        ctx.font = '12px "Inter", sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('Cone', obstacle.x + obstacle.width / 2, obstacle.y + obstacle.height / 2 + 4);
+                    }
+                } else if (obstacle.type === obstacleTypes.BEER) {
+                    if (beerImage.complete && beerImage.naturalWidth !== 0) {
+                        ctx.drawImage(beerImage, obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+                    } else {
+                        ctx.fillStyle = 'gold';
+                        ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+                        ctx.fillStyle = 'black';
+                        ctx.font = '12px "Inter", sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('Beer', obstacle.x + obstacle.width / 2, obstacle.y + obstacle.height / 2 + 4);
+                    }
+                }
+            });
+        }
+
+        // Update player position
+        function updatePlayer() {
+            player.x += player.dx;
+
+            // Keep player within canvas bounds
+            if (player.x < 0) {
+                player.x = 0;
+            }
+            if (player.x + player.width > canvas.width) {
+                player.x = canvas.width - player.width;
+            }
+        }
+
+        // Spawn a new obstacle
+        function spawnObstacle() {
+            const rand = Math.random();
+            let type;
+            if (rand < 0.1) { // 10% chance for Dess
+                type = obstacleTypes.DESS;
+            } else if (rand < 0.9) { // 80% chance for Cone (0.1 to 0.9)
+                type = obstacleTypes.CONE;
+            } else { // 10% chance for Beer (0.9 to 1.0)
+                type = obstacleTypes.BEER;
+            }
+
+            let newObstacle;
+            let width, height;
+
+            if (type === obstacleTypes.DESS) {
+                width = 40;
+                height = 40;
+            } else if (type === obstacleTypes.CONE) {
+                width = 50;
+                height = 50;
+            } else if (type === obstacleTypes.BEER) {
+                width = 40;
+                height = 60;
+            }
+
+            newObstacle = {
+                x: Math.random() * (canvas.width - width),
+                y: -height,
+                width: width,
+                height: height,
+                speed: currentObstacleSpeed,
+                type: type,
+                hit: false
+            };
+            obstacles.push(newObstacle);
+        }
+
+        // Update obstacles position and remove if off-screen
+        function updateObstacles() {
+            // Check for missed Dess before filtering
+            obstacles.forEach(obstacle => {
+                if (obstacle.type === obstacleTypes.DESS && obstacle.y > canvas.height && !obstacle.hit) {
+                    player.health--;
+                    playBeep(150, 0.2, 'sawtooth');
+                    updateGameInfoDisplay();
+                    if (player.health <= 0) {
+                        gameOver();
+                    }
+                }
+            });
+
+            obstacles.forEach(obstacle => {
+                obstacle.y += obstacle.speed;
+            });
+
+            obstacles = obstacles.filter(obstacle => {
+                return obstacle.y < canvas.height && !(obstacle.type === obstacleTypes.DESS && obstacle.hit);
+            });
+        }
+
+        // Collision detection
+        function detectCollisions() {
+            obstacles = obstacles.filter(obstacle => {
+                let collided = false;
+                if (player.x < obstacle.x + obstacle.width &&
+                    player.x + player.width > obstacle.x &&
+                    player.y < obstacle.y + obstacle.height &&
+                    player.y + player.height > obstacle.y) {
+                    collided = true;
+                }
+
+                if (collided) {
+                    if (obstacle.type === obstacleTypes.DESS) {
+                        if (!obstacle.hit) {
+                            score += 100;
+                            playBeep(880, 0.1, 'triangle');
+                            obstacle.hit = true;
+                            updateGameInfoDisplay();
+                            return false;
+                        }
+                    } else if (obstacle.type === obstacleTypes.CONE) {
+                        player.health--;
+                        playBeep(200, 0.3, 'square');
+                        updateGameInfoDisplay();
+                        if (player.health <= 0) {
+                            gameOver();
+                        }
+                        return false;
+                    } else if (obstacle.type === obstacleTypes.BEER) {
+                        player.health = Math.min(player.maxHealth, player.health + 1);
+                        playBeep(1000, 0.1, 'sine');
+                        updateGameInfoDisplay();
+
+                        player.speed = player.originalSpeed * speedBoostMultiplier;
+                        player.speedBoostActive = true;
+                        if (player.speedBoostTimeout) {
+                            clearTimeout(player.speedBoostTimeout);
+                        }
+                        player.speedBoostTimeout = setTimeout(() => {
+                            player.speed = player.originalSpeed;
+                            player.speedBoostActive = false;
+                            player.speedBoostTimeout = null;
+                        }, speedBoostDuration);
+                        return false;
+                    }
+                }
+                return true;
+            });
+        }
+
+        // Game over function
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animationFrameId);
+
+            if (player.speedBoostTimeout) {
+                clearTimeout(player.speedBoostTimeout);
+                player.speedBoostTimeout = null;
+            }
+            player.speed = player.originalSpeed;
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('asgoreDessHighScore', highScore);
+            }
+
+            messageText.textContent = `Game Over! Your Score: ${score}`;
+            if (player.health <= 0) {
+                messageText.textContent = `Game Over! You ran out of health. Your Score: ${score}`;
+            }
+            messageBox.style.display = 'block';
+        }
+
+        // Reset game function
+        function resetGame() {
+            score = 0;
+            player.health = player.maxHealth;
+            player.x = canvas.width / 2 - 50;
+            player.dx = 0;
+            player.speed = player.originalSpeed;
+            player.speedBoostActive = false;
+            if (player.speedBoostTimeout) {
+                clearTimeout(player.speedBoostTimeout);
+                player.speedBoostTimeout = null;
+            }
+            obstacles = [];
+            currentObstacleSpeed = initialObstacleSpeed;
+            lastPassiveScoreTime = 0;
+            lastObstacleSpawnTime = 0;
+            messageBox.style.display = 'none';
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            gameRunning = false;
+            updateGameInfoDisplay();
+        }
+
+        // Game loop
+        function gameLoop(currentTime) {
+            if (!gameRunning) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            updatePlayer();
+            drawPlayer();
+
+            updateObstacles();
+            drawObstacles();
+
+            if (currentTime - lastObstacleSpawnTime > obstacleSpawnInterval) {
+                spawnObstacle();
+                lastObstacleSpawnTime = currentTime;
+            }
+
+            if (currentTime - lastPassiveScoreTime > passiveScoreIncreaseInterval) {
+                score += 1;
+                updateGameInfoDisplay();
+                lastPassiveScoreTime = currentTime;
+            }
+
+            currentObstacleSpeed = Math.min(maxObstacleSpeed, initialObstacleSpeed + score * speedIncreaseFactor);
+
+            detectCollisions();
+
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // Event listeners for keyboard movement
+        document.addEventListener('keydown', (e) => {
+            if (!gameRunning) return;
+            if (e.key === 'ArrowLeft' || e.key === 'a') {
+                player.dx = -player.speed;
+            } else if (e.key === 'ArrowRight' || e.key === 'd') {
+                player.dx = player.speed;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (!gameRunning) return;
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'ArrowRight' || e.key === 'd') {
+                player.dx = 0;
+            }
+        });
+
+        // --- Mobile Touch Controls ---
+        let touchStartX = 0;
+        const touchThreshold = 20; // Minimum horizontal swipe distance to trigger movement
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (!gameRunning) return;
+            e.preventDefault(); // Prevent scrolling/zooming
+            touchStartX = e.touches[0].clientX;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (!gameRunning) return;
+            e.preventDefault(); // Prevent scrolling/zooming
+            const touchCurrentX = e.touches[0].clientX;
+            const deltaX = touchCurrentX - touchStartX;
+
+            if (Math.abs(deltaX) > touchThreshold) {
+                if (deltaX < 0) { // Swiping left
+                    player.dx = -player.speed;
+                } else { // Swiping right
+                    player.dx = player.speed;
+                }
+            } else {
+                player.dx = 0; // No significant swipe, stop movement
+            }
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            if (!gameRunning) return;
+            e.preventDefault(); // Prevent default touch behavior
+            player.dx = 0; // Stop movement when touch ends
+        });
+        // --- End Mobile Touch Controls ---
+
+
+        // Event listeners for buttons
+        startButton.addEventListener('click', () => {
+            if (!gameRunning) {
+                resetGame();
+                gameRunning = true;
+                animationFrameId = requestAnimationFrame(gameLoop);
+            }
+        });
+
+        resetButton.addEventListener('click', () => {
+            resetGame();
+        });
+
+        messageBoxButton.addEventListener('click', () => {
+            messageBox.style.display = 'none';
+            resetGame();
+            gameRunning = true;
+            animationFrameId = requestAnimationFrame(gameLoop);
+        });
+
+        // Initialize game on window load
+        window.onload = function() {
+            updateGameInfoDisplay();
+            let imagesLoaded = 0;
+            const totalImages = 4;
+
+            const imageLoadHandler = () => {
+                imagesLoaded++;
+                if (imagesLoaded === totalImages) {
+                    console.log("All game images loaded.");
+                }
+            };
+
+            asgoreImage.onload = imageLoadHandler;
+            dessImage.onload = imageLoadHandler;
+            coneImage.onload = imageLoadHandler;
+            beerImage.onload = imageLoadHandler;
+
+            if (asgoreImage.complete) imageLoadHandler();
+            if (dessImage.complete) imageLoadHandler();
+            if (coneImage.complete) imageLoadHandler();
+            if (beerImage.complete) imageLoadHandler();
+        };
+
+        // Handle canvas resizing for responsiveness
+        window.addEventListener('resize', () => {
+            // The canvas itself is styled to be responsive, but game elements' positions
+            // are based on fixed canvas dimensions. For a truly adaptive game,
+            // element sizes and positions would need to be recalculated relative to
+            // the new canvas size. For this simple game, we rely on CSS scaling.
+        });
+    </script>
+</body>
+</html>
